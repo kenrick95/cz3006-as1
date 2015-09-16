@@ -1,5 +1,6 @@
-import java.util.Timer;
 import java.util.TimerTask;
+import java.util.Timer;
+
 /*===============================================================*
  *  File: SWP.java                                               *
  *                                                               *
@@ -83,14 +84,14 @@ public class SWP {
  	implement your Protocol Variables and Methods below: 
  *==========================================================================*/
     boolean no_nak = true;
-    boolean between(int a, int b, int c ) {
+    static boolean between(int a, int b, int c ) {
         return ((a <= b) && (b < c)) || ((c<a) && (a <= b)) || ((b < c) && (c < a));
     }
     Timer[] timer = new Timer[NR_BUFS];
     Timer ack_timer;
 
 
-    void send_frame(int fk, int frame_nr, int frame_expected, Packet buffer[]) {
+    void send_frame(int fk, int frame_nr, int frame_expected, Packet[] buffer) {
         PFrame s = new PFrame();
         s.kind = fk;
         if (fk == PFrame.DATA) s.info = buffer[frame_nr % NR_BUFS];
@@ -98,34 +99,29 @@ public class SWP {
         s.ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1);
         if (fk == PFrame.NAK) no_nak = false;
         to_physical_layer(s);
-        if (fk == PFrame.DATA) start_timer(frame_nr % NR_BUFS);
+        if (fk == PFrame.DATA) start_timer(frame_nr);
         stop_ack_timer();
     }
 
    public void protocol6() {
-        init();
-
         int ack_expected, next_frame_to_send, frame_expected, too_far, i;
         PFrame r = new PFrame();
         Packet[] in_buf = new Packet[NR_BUFS];
         boolean[] arrived = new boolean[NR_BUFS];
-        int nbuffered;
-
-        this.enable_network_layer(NR_BUFS); // HOW DOES enable_network_layer DO?
         ack_expected = 0;
         next_frame_to_send = 0;
         frame_expected = 0;
         too_far = NR_BUFS;
-        nbuffered = 0;
         for (i = 0; i < NR_BUFS; i++) arrived[i] = false;
-
+		
+		init();
+        enable_network_layer(NR_BUFS); // HOW DOES enable_network_layer DO?
 
         while(true) {	
             wait_for_event(event);
             switch(event.type) {
                 case (PEvent.NETWORK_LAYER_READY):
-                    nbuffered++;
-                    this.from_network_layer(out_buf[next_frame_to_send % NR_BUFS]);
+                    from_network_layer(out_buf[next_frame_to_send % NR_BUFS]);
                     send_frame(PFrame.DATA, next_frame_to_send, frame_expected, out_buf);
                     next_frame_to_send = (next_frame_to_send + 1) % (MAX_SEQ + 1);
                 break; 
@@ -155,9 +151,11 @@ public class SWP {
                     }
                     if ((r.kind == PFrame.NAK) && between(ack_expected, (r.ack + 1) % (MAX_SEQ + 1), next_frame_to_send))
                         send_frame(PFrame.DATA, (r.ack + 1) % (MAX_SEQ + 1), frame_expected, out_buf);
+
+					// Basically, when we receive r.ack, all ack between that ack_expected and next_frame_to_send
+					// is assumed to be received too and hence, we can grant credit for the next packet transmission
                     while (between(ack_expected, r.ack, next_frame_to_send)) {
-                        nbuffered--;
-                        stop_timer(ack_expected %  NR_BUFS); // undo // changed from "ack_expected % NR_BUFS"  // --> see lecture?
+                        stop_timer(ack_expected);
                         ack_expected = (ack_expected + 1) % (MAX_SEQ + 1);
                         enable_network_layer(1); // TODO: FIND OUT WHY!!!! --> "DEADLOCK"; site 1 sent 4, site 2 sent 4; both can't piggyback; both send ACK due to TIMEOUT. When TIMEOUT, site 1 has received all 4 packets and frame_expected has been incremented to 3.
                     }
@@ -177,9 +175,6 @@ public class SWP {
                     System.out.flush();
             }
 
-            // TODO: WHY COMMENTED OUT!! --> LEC NOTES SAYS SO
-            //if (nbuffered < NR_BUFS) enable_network_layer(NR_BUFS);
-                // else disable_network_layer();
         }      
    }
 
