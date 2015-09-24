@@ -90,17 +90,23 @@ public class SWP {
     Timer[] timer = new Timer[NR_BUFS];
     Timer ack_timer;
 
-
+    /**
+     * Construct and send a data, ack, or nak frame
+     * @param fk             frame kind
+     * @param frame_nr       frame number
+     * @param frame_expected
+     * @param buffer         buffer Packet(s)
+     */
     void send_frame(int fk, int frame_nr, int frame_expected, Packet[] buffer) {
         PFrame s = new PFrame();
-        s.kind = fk;
+        s.kind = fk; // kind: data, ack, or nak
         if (fk == PFrame.DATA) s.info = buffer[frame_nr % NR_BUFS];
-        s.seq = frame_nr;
+        s.seq = frame_nr; // only meaningful for data frames
         s.ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1);
-        if (fk == PFrame.NAK) no_nak = false;
-        to_physical_layer(s);
+        if (fk == PFrame.NAK) no_nak = false; // one nak per frame
+        to_physical_layer(s); // transmit the frame
         if (fk == PFrame.DATA) start_timer(frame_nr);
-        stop_ack_timer();
+        stop_ack_timer(); // no need for separate ack frame
     }
 
    public void protocol6() {
@@ -242,11 +248,6 @@ public class SWP {
 
                 default: 
                     System.out.println("SWP: undefined event type = " + event.type); 
-                    System.out.flush();
-            }
-
-        }      
-   }
 
  /* Note: when start_timer() and stop_timer() are called, 
     the "seq" parameter must be the sequence number, rather 
@@ -263,7 +264,7 @@ public class SWP {
    private void stop_timer(int seq) { 
         if (timer[seq % NR_BUFS] != null) {
             timer[seq % NR_BUFS].cancel();
-            timer[seq % NR_BUFS] = null;   
+            timer[seq % NR_BUFS] = null;
         }
    }
 
